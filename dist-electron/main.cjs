@@ -62,8 +62,11 @@ class ActivityTracker extends events.EventEmitter {
         if (result) {
           this.emit("activity-update", result);
           try {
-            const appName = result.owner.name;
+            let appName = result.owner.name;
             const appPath = result.owner.path;
+            if (appName === "Electron" || appName === "electron") {
+              appName = "FocusFlow";
+            }
             const app = await db.app.upsert({
               where: { name: appName },
               update: { path: appPath, updatedAt: /* @__PURE__ */ new Date() },
@@ -536,7 +539,24 @@ electron.app.setName("FocusFlow");
 let tracker;
 function createWindow() {
   const win = new electron.BrowserWindow({
-    icon: path.join(__dirname, process.env.VITE_DEV_SERVER_URL ? "../public/logo.png" : "../dist/logo.png"),
+    icon: (() => {
+      const fs = require("fs");
+      const paths = [
+        path.resolve(__dirname, "../public/logo.png"),
+        path.resolve(__dirname, "../dist/logo.png"),
+        path.resolve(__dirname, "../logo.png"),
+        path.join(process.cwd(), "public/logo.png"),
+        path.join(process.cwd(), "logo.png")
+      ];
+      for (const p of paths) {
+        if (fs.existsSync(p)) {
+          console.log("Icon found at:", p);
+          return p;
+        }
+      }
+      console.log("No custom icon found, using default");
+      return void 0;
+    })(),
     width: 1280,
     height: 800,
     minWidth: 1e3,

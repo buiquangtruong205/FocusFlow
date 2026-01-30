@@ -17,7 +17,25 @@ let tracker: ActivityTracker;
 
 function createWindow() {
     const win = new BrowserWindow({
-        icon: path.join(__dirname, process.env.VITE_DEV_SERVER_URL ? '../public/logo.png' : '../dist/logo.png'),
+        icon: (() => {
+            const fs = require('fs');
+            const paths = [
+                path.resolve(__dirname, '../public/logo.png'),
+                path.resolve(__dirname, '../dist/logo.png'),
+                path.resolve(__dirname, '../logo.png'),
+                path.join(process.cwd(), 'public/logo.png'),
+                path.join(process.cwd(), 'logo.png')
+            ];
+
+            for (const p of paths) {
+                if (fs.existsSync(p)) {
+                    console.log('Icon found at:', p);
+                    return p;
+                }
+            }
+            console.log('No custom icon found, using default');
+            return undefined;
+        })(),
         width: 1280,
         height: 800,
         minWidth: 1000,

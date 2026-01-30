@@ -25,8 +25,13 @@ export class ActivityTracker extends EventEmitter {
                     this.emit('activity-update', result);
                     // Save to Database
                     try {
-                        const appName = result.owner.name;
+                        let appName = result.owner.name;
                         const appPath = result.owner.path;
+
+                        // Local fix: Rename "Electron" to "FocusFlow" in dev mode
+                        if (appName === 'Electron' || appName === 'electron') {
+                            appName = 'FocusFlow';
+                        }
 
                         // Upsert App
                         const app = await db.app.upsert({

@@ -1,5 +1,5 @@
 const fs = require('fs');
-const src = 'C:\\Users\\Admin\\.gemini\\antigravity\\brain\\603b6cb8-01bf-47f5-9bf3-eca2d8a9719f\\uploaded_media_1769737728549.png';
+const src = 'e:\\FocusFlow\\logo.png';
 const dest = 'e:\\FocusFlow\\public\\logo.png';
 
 try {

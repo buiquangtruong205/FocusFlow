@@ -1,7 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 
-const src = 'C:\\Users\\Admin\\.gemini\\antigravity\\brain\\603b6cb8-01bf-47f5-9bf3-eca2d8a9719f\\uploaded_media_1769738325836.png';
+const src = 'e:\\FocusFlow\\logo.png';
 const destinations = [
     'e:\\FocusFlow\\public\\logo.png',
     'e:\\FocusFlow\\dist\\logo.png', // Fallback for production builds

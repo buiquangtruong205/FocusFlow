@@ -66,7 +66,13 @@ export const useTodayStore = defineStore('today', () => {
                 summary.value.activeMs += 2000; // Assume 2s interval
 
                 // Update Top Apps
-                const appName = data.owner?.name || data.title || 'Unknown';
+                let appName = data.owner?.name || data.title || 'Unknown';
+
+                // Consistency fix for dev mode
+                if (appName === 'Electron' || appName === 'electron') {
+                    appName = 'FocusFlow';
+                }
+
                 const existing = topApps.value.find(a => a.displayName === appName);
                 if (existing) {
                     existing.durationMs += 2000;
