@@ -1,0 +1,119 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// 1. App
+model App {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  path      String?
+  icon      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  rules     AppRule[]
+  activities ActivityEvent[]
+}
+
+// 2. AppRule
+model AppRule {
+  id             String   @id @default(uuid())
+  appId          String
+  app            App      @relation(fields: [appId], references: [id], onDelete: Cascade)
+  category       String   @default("OTHER") // WORK, COMM, ENT, OTHER
+  isBlocked     Boolean  @default(false)
+  ignoreTracking Boolean  @default(false)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([appId])
+}
+
+// 3. ActivityEvent (Source of Truth)
+model ActivityEvent {
+  id        String   @id @default(uuid())
+  timestamp DateTime @default(now())
+  eventType String   // ACTIVE, IDLE, APP_SWITCH
+  
+  appId     String?
+  app       App?     @relation(fields: [appId], references: [id])
+  
+  windowTitle String?
+  
+  // Optional: Duration in seconds if we aggregate here, but for raw log:
+  // We usually compute duration based on next event's timestamp.
+}
+
+// 4. FocusSession
+model FocusSession {
+  id        String   @id @default(uuid())
+  startTime DateTime @default(now())
+  endTime   DateTime?
+  status    String   // RUNNING, COMPLETED, ABORTED
+  goal      String?
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  events    FocusSessionEvent[]
+}
+
+// 5. FocusSessionEvent
+model FocusSessionEvent {
+  id        String   @id @default(uuid())
+  sessionId String
+  session   FocusSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  
+  type      String   // PAUSE, RESUME, DISTRACTED, END
+  timestamp DateTime @default(now())
+}
+
+// 6. DailyStat
+model DailyStat {
+  id        String   @id @default(uuid())
+  date      DateTime @unique // STORE AS MIDNIGHT UTC
+  
+  workTime  Int @default(0) // Seconds
+  commTime  Int @default(0)
+  entTime   Int @default(0)
+  otherTime Int @default(0)
+  idleTime  Int @default(0)
+  
+  focusTime      Int @default(0)
+  distractedTime Int @default(0)
+  
+  switchCount Int @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// 7. Preference
+model Preference {
+  id             String   @id @default(uuid())
+  idleThreshold  Int      @default(300) // Seconds
+  maskWindowTitle Boolean @default(false)
+  startOnBoot    Boolean  @default(false)
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// 8. Subscription
+model Subscription {
+  id          String   @id @default(uuid())
+  plan        String   @default("FREE") // FREE, PRO, ELITE
+  expiry      DateTime?
+  licenseKey  String?
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
