@@ -21,4 +21,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     // Focus
     startFocusSession: (config: any) => ipcRenderer.invoke('start-focus-session', config),
     endFocusSession: (sessionId: string) => ipcRenderer.invoke('end-focus-session', sessionId),
+    pauseFocusSession: () => ipcRenderer.invoke('pause-focus-session'),
+    resumeFocusSession: () => ipcRenderer.invoke('resume-focus-session'),
+    onFocusSessionUpdate: (callback: (session: any) => void) => ipcRenderer.on('focus-session-update', (_event, value) => callback(value)),
+
+    // Advice
+    getDailyAdvice: () => ipcRenderer.invoke('get-daily-advice'),
 });

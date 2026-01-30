@@ -10,6 +10,18 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// 9. Advice
+model Advice {
+  id        String   @id @default(uuid())
+  text      String
+  author    String?
+  active    Boolean  @default(true) // If we want to soft-delete
+  shownDate DateTime? // To track when it was shown? Or just random fetch. Let's keep it simple.
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
 // 1. App
 model App {
   id        String   @id @default(uuid())

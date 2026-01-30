@@ -78,9 +78,14 @@ export interface ElectronAPI {
     getStatsRange: (startDate: string, endDate: string) => Promise<DailySummaryDTO[]>;
 
     // Focus APIs
-    // Focus APIs
     startFocusSession: (config: FocusSessionConfig) => Promise<FocusSessionDTO>;
-    endFocusSession: (sessionId: string) => Promise<FocusSessionDTO>;
+    endFocusSession: (sessionId: string) => Promise<FocusSessionDTO | null>;
+    pauseFocusSession: () => Promise<{ status: string }>;
+    resumeFocusSession: () => Promise<{ status: string }>;
+    onFocusSessionUpdate: (callback: (session: FocusSessionDTO | null) => void) => void;
+
+    // Advice
+    getDailyAdvice: () => Promise<{ text: string, author?: string }>;
 
     // Tracking
     startTracking: () => Promise<{ status: string }>;

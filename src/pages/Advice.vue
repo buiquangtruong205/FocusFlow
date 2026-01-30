@@ -1,23 +1,35 @@
 <script setup lang="ts">
-import { ref } from 'vue';
+import { ref, onMounted } from 'vue';
 import { Lightbulb, Quote } from 'lucide-vue-next';
+import { api } from '@/services/api';
 
 const currentAdvice = ref({
-    text: "Focus on being productive instead of busy.",
-    author: "Tim Ferriss"
+    text: "Focus is the key to productivity.",
+    author: "FocusFlow"
 });
 
-function refreshAdvice() {
-    // Placeholder for fetching new advice
-    const adviceList = [
-        { text: "The only way to do great work is to love what you do.", author: "Steve Jobs" },
-        { text: "It's not that I'm so smart, it's just that I stay with problems longer.", author: "Albert Einstein" },
-        { text: "Simplicity is the ultimate sophistication.", author: "Leonardo da Vinci" },
-        { text: "Focus is a matter of deciding what things you're not going to do.", author: "John Carmack" }
-    ];
-    const random = adviceList[Math.floor(Math.random() * adviceList.length)];
-    currentAdvice.value = random;
+const isLoading = ref(false);
+
+async function refreshAdvice() {
+    isLoading.value = true;
+    try {
+        const advice = await api.getDailyAdvice();
+        if (advice) {
+            currentAdvice.value = {
+                text: advice.text,
+                author: advice.author || 'Unknown'
+            };
+        }
+    } catch (e) {
+        console.error("Failed to load advice", e);
+    } finally {
+        isLoading.value = false;
+    }
 }
+
+onMounted(() => {
+    refreshAdvice();
+});
 </script>
 
 <template>

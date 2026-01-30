@@ -35,76 +35,10 @@ const db = global.prisma || new client.PrismaClient({
   },
   log: ["query", "info", "warn", "error"]
 });
-const SCHEMA_SQL = [
-  `CREATE TABLE IF NOT EXISTS "App" (
-        "id" TEXT NOT NULL PRIMARY KEY,
-        "name" TEXT NOT NULL,
-        "path" TEXT,
-        "icon" TEXT,
-        "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        "updatedAt" DATETIME NOT NULL
-    );`,
-  `CREATE UNIQUE INDEX IF NOT EXISTS "App_name_key" ON "App"("name");`,
-  `CREATE TABLE IF NOT EXISTS "AppRule" (
-        "id" TEXT NOT NULL PRIMARY KEY,
-        "appId" TEXT NOT NULL,
-        "category" TEXT NOT NULL DEFAULT 'OTHER',
-        "isBlocked" BOOLEAN NOT NULL DEFAULT 0,
-        "ignoreTracking" BOOLEAN NOT NULL DEFAULT 0,
-        "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        "updatedAt" DATETIME NOT NULL,
-        CONSTRAINT "AppRule_appId_fkey" FOREIGN KEY ("appId") REFERENCES "App" ("id") ON DELETE CASCADE ON UPDATE CASCADE
-    );`,
-  `CREATE UNIQUE INDEX IF NOT EXISTS "AppRule_appId_key" ON "AppRule"("appId");`,
-  `CREATE TABLE IF NOT EXISTS "ActivityEvent" (
-        "id" TEXT NOT NULL PRIMARY KEY,
-        "timestamp" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        "eventType" TEXT NOT NULL,
-        "appId" TEXT,
-        "windowTitle" TEXT,
-        CONSTRAINT "ActivityEvent_appId_fkey" FOREIGN KEY ("appId") REFERENCES "App" ("id") ON DELETE SET NULL ON UPDATE CASCADE
-    );`,
-  `CREATE TABLE IF NOT EXISTS "FocusSession" (
-        "id" TEXT NOT NULL PRIMARY KEY,
-        "startTime" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        "endTime" DATETIME,
-        "status" TEXT NOT NULL,
-        "goal" TEXT,
-        "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        "updatedAt" DATETIME NOT NULL
-    );`,
-  `CREATE TABLE IF NOT EXISTS "FocusSessionEvent" (
-        "id" TEXT NOT NULL PRIMARY KEY,
-        "sessionId" TEXT NOT NULL,
-        "type" TEXT NOT NULL,
-        "timestamp" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        CONSTRAINT "FocusSessionEvent_sessionId_fkey" FOREIGN KEY ("sessionId") REFERENCES "FocusSession" ("id") ON DELETE CASCADE ON UPDATE CASCADE
-    );`,
-  `CREATE TABLE IF NOT EXISTS "DailyStat" (
-        "id" TEXT NOT NULL PRIMARY KEY,
-        "date" DATETIME NOT NULL,
-        "workTime" INTEGER NOT NULL DEFAULT 0,
-        "commTime" INTEGER NOT NULL DEFAULT 0,
-        "entTime" INTEGER NOT NULL DEFAULT 0,
-        "otherTime" INTEGER NOT NULL DEFAULT 0,
-        "idleTime" INTEGER NOT NULL DEFAULT 0,
-        "focusTime" INTEGER NOT NULL DEFAULT 0,
-        "distractedTime" INTEGER NOT NULL DEFAULT 0,
-        "switchCount" INTEGER NOT NULL DEFAULT 0,
-        "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        "updatedAt" DATETIME NOT NULL
-    );`,
-  `CREATE UNIQUE INDEX IF NOT EXISTS "DailyStat_date_key" ON "DailyStat"("date");`
-];
 async function initDatabase() {
   try {
     await db.$connect();
     console.log("✅ Database connected successfully");
-    console.log("🔄 Verifying Schema...");
-    for (const sql of SCHEMA_SQL) {
-      await db.$executeRawUnsafe(sql);
-    }
-    console.log("✅ Schema verification complete");
   } catch (error) {
     console.error("❌ Database connection failed:", error);
     throw error;
@@ -170,6 +104,175 @@ class ActivityTracker extends events.EventEmitter {
     console.log("Tracking stopped");
   }
 }
+const log = {
+  info: (...args) => console.log("[INFO]", ...args),
+  error: (...args) => console.error("[ERROR]", ...args),
+  warn: (...args) => console.warn("[WARN]", ...args),
+  debug: (...args) => console.debug("[DEBUG]", ...args),
+  transports: {
+    file: { level: "info" },
+    console: { makeCodeLocationSnippet: false }
+  }
+};
+const logger = log;
+function setupLogging() {
+  console.log("Logger initialized (console fallback)");
+  process.on("uncaughtException", (error) => {
+    console.error("Uncaught Exception:", error);
+  });
+  process.on("unhandledRejection", (reason) => {
+    console.error("Unhandled Rejection:", reason);
+  });
+}
+class FocusSessionService {
+  constructor() {
+    __publicField(this, "currentSession", null);
+    __publicField(this, "mainWindow", null);
+  }
+  setWindow(win) {
+    this.mainWindow = win;
+  }
+  async startSession(config) {
+    if (this.currentSession) {
+      await this.endSession(this.currentSession.id);
+    }
+    const durationMin = config.durationMinutes || 25;
+    try {
+      const session = await db.focusSession.create({
+        data: {
+          startTime: /* @__PURE__ */ new Date(),
+          status: "RUNNING",
+          goal: config.taskTitle || "Focus Session"
+        }
+      });
+      this.currentSession = {
+        id: session.id,
+        startTime: session.startTime,
+        goal: session.goal,
+        durationMinutes: durationMin,
+        remainingSeconds: durationMin * 60,
+        status: "RUNNING",
+        timer: null
+      };
+      this.startTimer();
+      logger.info(`Session started: ${session.id}`);
+      return this.mapToDTO(this.currentSession);
+    } catch (e) {
+      logger.error("Failed to start session", e);
+      throw e;
+    }
+  }
+  startTimer() {
+    if (!this.currentSession) return;
+    if (this.currentSession.timer) clearInterval(this.currentSession.timer);
+    this.currentSession.timer = setInterval(() => {
+      if (!this.currentSession) return;
+      this.currentSession.remainingSeconds--;
+      this.broadcastStatus();
+      if (this.currentSession.remainingSeconds <= 0) {
+        this.completeSession();
+      }
+    }, 1e3);
+  }
+  stopTimer() {
+    var _a;
+    if ((_a = this.currentSession) == null ? void 0 : _a.timer) {
+      clearInterval(this.currentSession.timer);
+      this.currentSession.timer = null;
+    }
+  }
+  async pauseSession() {
+    if (!this.currentSession || this.currentSession.status !== "RUNNING") return;
+    this.stopTimer();
+    this.currentSession.status = "PAUSED";
+    await db.focusSessionEvent.create({
+      data: {
+        sessionId: this.currentSession.id,
+        type: "PAUSE"
+      }
+    });
+    this.broadcastStatus();
+  }
+  async resumeSession() {
+    if (!this.currentSession || this.currentSession.status !== "PAUSED") return;
+    this.currentSession.status = "RUNNING";
+    await db.focusSessionEvent.create({
+      data: {
+        sessionId: this.currentSession.id,
+        type: "RESUME"
+      }
+    });
+    this.startTimer();
+  }
+  async endSession(sessionId) {
+    if (!this.currentSession || this.currentSession.id !== sessionId) return null;
+    this.stopTimer();
+    await db.focusSession.update({
+      where: { id: sessionId },
+      data: {
+        status: "COMPLETED",
+        // or ABORTED if early?
+        endTime: /* @__PURE__ */ new Date()
+      }
+    });
+    const completedSession = { ...this.currentSession, status: "COMPLETED" };
+    this.currentSession = null;
+    this.broadcastStatus(completedSession);
+    return this.mapToDTO(completedSession);
+  }
+  async completeSession() {
+    if (!this.currentSession) return;
+    logger.info(`Session time completed: ${this.currentSession.id}`);
+    await this.endSession(this.currentSession.id);
+  }
+  broadcastStatus(overrideSession) {
+    if (!this.mainWindow || this.mainWindow.isDestroyed()) return;
+    const session = overrideSession || this.currentSession;
+    if (session) {
+      this.mainWindow.webContents.send("focus-session-update", this.mapToDTO(session));
+    } else {
+      this.mainWindow.webContents.send("focus-session-update", null);
+    }
+  }
+  mapToDTO(session) {
+    return {
+      sessionId: session.id,
+      config: {
+        taskTitle: session.goal || "",
+        durationMinutes: session.durationMinutes,
+        allowedCategories: [],
+        strictMode: false
+      },
+      startTime: session.startTime instanceof Date ? session.startTime.toISOString() : session.startTime,
+      state: session.status,
+      // "RUNNING" | "PAUSED" | "COMPLETED"
+      // Allow frontend to calculate visual timer
+      // Or send remainingSeconds directly if we change DTO
+      elapsedMs: (session.durationMinutes * 60 - session.remainingSeconds) * 1e3,
+      totalFocusMs: 0,
+      // TODO: calculate from events
+      totalDistractedMs: 0,
+      totalIdleMs: 0,
+      currentFocusState: "FOCUS"
+    };
+  }
+  // Recovery on app restart
+  async recoverActiveSession() {
+    const openSessions = await db.focusSession.findMany({
+      where: { status: "RUNNING" }
+    });
+    if (openSessions.length > 0) {
+      logger.info(`Found ${openSessions.length} orphaned sessions. Closing them.`);
+      for (const s of openSessions) {
+        await db.focusSession.update({
+          where: { id: s.id },
+          data: { status: "ABORTED", endTime: /* @__PURE__ */ new Date() }
+        });
+      }
+    }
+  }
+}
+const focusSessionService = new FocusSessionService();
 function registerHandlers(tracker2) {
   electron.ipcMain.handle("tracking:start", () => {
     tracker2.startTracking();
@@ -375,37 +478,61 @@ function registerHandlers(tracker2) {
     });
   });
   electron.ipcMain.handle("start-focus-session", async (_event, config) => {
-    const session = await db.focusSession.create({
-      data: {
-        startTime: /* @__PURE__ */ new Date(),
-        status: "RUNNING",
-        goal: config.taskTitle
-      }
-    });
-    return {
-      sessionId: session.id,
-      config,
-      startTime: session.startTime.toISOString(),
-      state: "RUNNING",
-      elapsedMs: 0,
-      totalFocusMs: 0,
-      totalDistractedMs: 0,
-      totalIdleMs: 0,
-      currentFocusState: "FOCUS"
-    };
+    try {
+      return await focusSessionService.startSession(config);
+    } catch (error) {
+      console.error("IPC Error (start-focus-session):", error);
+      throw error;
+    }
   });
   electron.ipcMain.handle("end-focus-session", async (_event, sessionId) => {
-    await db.focusSession.update({
-      where: { id: sessionId },
-      data: { status: "COMPLETED", endTime: /* @__PURE__ */ new Date() }
-    });
-    return {
-      sessionId,
-      state: "COMPLETED",
-      endTime: (/* @__PURE__ */ new Date()).toISOString()
-    };
+    try {
+      return await focusSessionService.endSession(sessionId);
+    } catch (error) {
+      console.error("IPC Error (end-focus-session):", error);
+      throw error;
+    }
+  });
+  electron.ipcMain.handle("pause-focus-session", async () => {
+    try {
+      await focusSessionService.pauseSession();
+      return { status: "paused" };
+    } catch (error) {
+      console.error("IPC Error (pause-focus-session):", error);
+      throw error;
+    }
+  });
+  electron.ipcMain.handle("resume-focus-session", async () => {
+    try {
+      await focusSessionService.resumeSession();
+      return { status: "running" };
+    } catch (error) {
+      console.error("IPC Error (resume-focus-session):", error);
+      throw error;
+    }
+  });
+  electron.ipcMain.handle("get-daily-advice", async () => {
+    try {
+      const count = await db.advice.count();
+      if (count > 0) {
+        const skip = Math.floor(Math.random() * count);
+        return await db.advice.findFirst({ skip });
+      }
+      return {
+        text: "Focus is the key to productivity.",
+        author: "FocusFlow"
+      };
+    } catch (error) {
+      console.error("IPC Error (get-daily-advice):", error);
+      throw error;
+    }
   });
 }
+setupLogging();
+if (process.platform === "win32") {
+  electron.app.setAppUserModelId("FocusFlow");
+}
+electron.app.setName("FocusFlow");
 let tracker;
 function createWindow() {
   const win = new electron.BrowserWindow({
@@ -423,6 +550,7 @@ function createWindow() {
       symbolColor: "#ffffff",
       height: 30
     },
+    title: "FocusFlow",
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
       sandbox: false,
@@ -444,6 +572,9 @@ function createWindow() {
       win.webContents.send("activity-update", data);
     }
   });
+  const { focusSessionService: focusSessionService2 } = require("./focus/focusSessionService");
+  focusSessionService2.setWindow(win);
+  focusSessionService2.recoverActiveSession();
 }
 electron.app.whenReady().then(async () => {
   await initDatabase();

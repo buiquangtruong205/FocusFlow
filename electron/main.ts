@@ -4,6 +4,14 @@ import path from 'path';
 import { ActivityTracker } from './tracker/activityTracker';
 import { registerHandlers } from './ipc/handlers';
 import { initDatabase } from './db';
+import { setupLogging } from './logger';
+
+setupLogging();
+
+if (process.platform === 'win32') {
+    app.setAppUserModelId('FocusFlow');
+}
+app.setName('FocusFlow');
 
 let tracker: ActivityTracker;
 
@@ -21,6 +29,7 @@ function createWindow() {
             symbolColor: '#ffffff',
             height: 30
         },
+        title: 'FocusFlow',
         webPreferences: {
             preload: path.join(__dirname, 'preload.js'),
             sandbox: false,
@@ -47,6 +56,11 @@ function createWindow() {
             win.webContents.send('activity-update', data);
         }
     });
+
+    // Initialize Focus Service
+    const { focusSessionService } = require('./focus/focusSessionService');
+    focusSessionService.setWindow(win);
+    focusSessionService.recoverActiveSession();
 }
 
 

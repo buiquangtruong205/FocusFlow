@@ -30,5 +30,15 @@ export const api = {
     },
     endFocusSession: async (sessionId: string): Promise<any> => {
         return window.electronAPI.endFocusSession(sessionId);
+    },
+    pauseFocusSession: async () => {
+        return window.electronAPI.pauseFocusSession();
+    },
+    resumeFocusSession: async () => {
+        return window.electronAPI.resumeFocusSession();
+    },
+    // Advice
+    getDailyAdvice: async () => {
+        return window.electronAPI.getDailyAdvice();
     }
 };

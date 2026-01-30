@@ -16,5 +16,10 @@ electron.contextBridge.exposeInMainWorld("electronAPI", {
   updateAppCategory: (appId, category) => electron.ipcRenderer.invoke("update-app-category", appId, category),
   // Focus
   startFocusSession: (config) => electron.ipcRenderer.invoke("start-focus-session", config),
-  endFocusSession: (sessionId) => electron.ipcRenderer.invoke("end-focus-session", sessionId)
+  endFocusSession: (sessionId) => electron.ipcRenderer.invoke("end-focus-session", sessionId),
+  pauseFocusSession: () => electron.ipcRenderer.invoke("pause-focus-session"),
+  resumeFocusSession: () => electron.ipcRenderer.invoke("resume-focus-session"),
+  onFocusSessionUpdate: (callback) => electron.ipcRenderer.on("focus-session-update", (_event, value) => callback(value)),
+  // Advice
+  getDailyAdvice: () => electron.ipcRenderer.invoke("get-daily-advice")
 });

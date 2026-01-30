@@ -2,6 +2,7 @@ import { ipcMain } from 'electron';
 import { ActivityTracker } from '../tracker/activityTracker';
 import { db } from '../db';
 import { DailySummaryDTO, TopAppDTO, AppCategory, TimelineDTO, FocusSessionConfig, FocusSessionDTO } from '../../shared/types/index';
+import { focusSessionService } from '../focus/focusSessionService';
 
 export function registerHandlers(tracker: ActivityTracker) {
 
@@ -256,41 +257,60 @@ export function registerHandlers(tracker: ActivityTracker) {
     });
 
     // --- Focus Sessions ---
-    // Minimal impl for MVP
     ipcMain.handle('start-focus-session', async (_event, config: FocusSessionConfig) => {
-        const session = await db.focusSession.create({
-            data: {
-                startTime: new Date(),
-                status: 'RUNNING',
-                goal: config.taskTitle
-            }
-        });
-        return {
-            sessionId: session.id,
-            config,
-            startTime: session.startTime.toISOString(),
-            state: 'RUNNING',
-            elapsedMs: 0,
-            totalFocusMs: 0,
-            totalDistractedMs: 0,
-            totalIdleMs: 0,
-            currentFocusState: 'FOCUS'
-        } as FocusSessionDTO;
+        try {
+            return await focusSessionService.startSession(config);
+        } catch (error: any) {
+            console.error('IPC Error (start-focus-session):', error);
+            throw error;
+        }
     });
 
-    // We need real state management for focus sessions (pause/resume/end). 
-    // Ideally use a Service instance that holds active session state in memory.
-    // For now, stateless handlers updating DB.
-
     ipcMain.handle('end-focus-session', async (_event, sessionId: string) => {
-        await db.focusSession.update({
-            where: { id: sessionId },
-            data: { status: 'COMPLETED', endTime: new Date() }
-        });
-        return {
-            sessionId,
-            state: 'COMPLETED',
-            endTime: new Date().toISOString()
-        };
+        try {
+            return await focusSessionService.endSession(sessionId);
+        } catch (error: any) {
+            console.error('IPC Error (end-focus-session):', error);
+            throw error;
+        }
+    });
+
+    // Extensions
+    ipcMain.handle('pause-focus-session', async () => {
+        try {
+            await focusSessionService.pauseSession();
+            return { status: 'paused' };
+        } catch (error: any) {
+            console.error('IPC Error (pause-focus-session):', error);
+            throw error;
+        }
+    });
+
+    ipcMain.handle('resume-focus-session', async () => {
+        try {
+            await focusSessionService.resumeSession();
+            return { status: 'running' };
+        } catch (error: any) {
+            console.error('IPC Error (resume-focus-session):', error);
+            throw error;
+        }
+    });
+
+    // --- Daily Advice ---
+    ipcMain.handle('get-daily-advice', async () => {
+        try {
+            const count = await db.advice.count();
+            if (count > 0) {
+                const skip = Math.floor(Math.random() * count);
+                return await db.advice.findFirst({ skip });
+            }
+            return {
+                text: "Focus is the key to productivity.",
+                author: "FocusFlow"
+            };
+        } catch (error: any) {
+            console.error('IPC Error (get-daily-advice):', error);
+            throw error;
+        }
     });
 }

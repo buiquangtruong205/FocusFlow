@@ -111,11 +111,17 @@ export const statsService = {
                 }
             }
 
+            // Productivity Score
+            let productivityScore = 0;
+            if (totalMs > 0) {
+                productivityScore = Math.round((catSums.Work / totalMs) * 100);
+            }
+
             return {
                 weeklyData: weeklyData,
                 distribution: distribution.sort((a, b) => b.value - a.value),
                 streak,
-                productivityScore: 85 // Placeholder or calculate based on Work/Total ratio?
+                productivityScore
             };
 
         } catch (error) {

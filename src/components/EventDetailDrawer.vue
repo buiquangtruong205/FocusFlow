@@ -23,7 +23,7 @@ function duration(ms: number) {
 
 <template>
   <div 
-    class="fixed top-0 right-0 h-full w-80 bg-surface border-l border-white/10 shadow-2xl z-50 transform transition-transform duration-300 ease-in-out"
+    class="fixed top-0 right-0 h-full w-80 bg-surface border-l border-white/10 shadow-2xl z-50 transform transition-transform duration-300 ease-in-out pt-8"
     :class="segment ? 'translate-x-0' : 'translate-x-full'"
   >
     <div v-if="segment" class="h-full flex flex-col">
